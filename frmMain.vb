@@ -115,8 +115,9 @@ Public Class frmMain
             Dim structuringElement7x7 As Mat = CvInvoke.GetStructuringElement(ElementShape.Rectangle, New Size(7, 7), New Point(-1, -1))
             Dim structuringElement9x9 As Mat = CvInvoke.GetStructuringElement(ElementShape.Rectangle, New Size(9, 9), New Point(-1, -1))
 
-            CvInvoke.Dilate(imgThresh, imgThresh, structuringElement7x7, New Point(-1, -1), 1, BorderType.Default, New MCvScalar(0, 0, 0))
-            CvInvoke.Erode(imgThresh, imgThresh, structuringElement3x3, New Point(-1, -1), 1, BorderType.Default, New MCvScalar(0, 0, 0))
+            CvInvoke.Dilate(imgThresh, imgThresh, structuringElement5x5, New Point(-1, -1), 1, BorderType.Default, New MCvScalar(0, 0, 0))
+            CvInvoke.Dilate(imgThresh, imgThresh, structuringElement5x5, New Point(-1, -1), 1, BorderType.Default, New MCvScalar(0, 0, 0))
+            CvInvoke.Erode(imgThresh, imgThresh, structuringElement5x5, New Point(-1, -1), 1, BorderType.Default, New MCvScalar(0, 0, 0))
 
             Dim imgThreshCopy As Mat = imgThresh.Clone()
 
@@ -124,20 +125,33 @@ Public Class frmMain
 
             CvInvoke.FindContours(imgThreshCopy, contours, Nothing, RetrType.External, ChainApproxMethod.ChainApproxSimple)
 
-            For i As Integer = 0 To contours.Size() - 1
+            drawAndShowContours(imgThresh.Size(), contours, "imgContours")
 
-                Dim possibleBlob As New Blob(contours(i))
+            Dim convexHulls As New VectorOfVectorOfPoint(contours.Size())
+
+            For i As Integer = 0 To contours.Size() - 1
+                CvInvoke.ConvexHull(contours(i), convexHulls(i))
+            Next
+            
+            drawAndShowContours(imgThresh.Size(), convexHulls, "imgConvexHulls")
+
+            For i As Integer = 0 To convexHulls.Size() - 1
+
+                Dim possibleBlob As New Blob(convexHulls(i))
 
                 If (possibleBlob.intCurrentRectArea > 100 And _
                     possibleBlob.dblCurrentAspectRatio >= 0.2 And _
                     possibleBlob.dblCurrentAspectRatio <= 1.25 And _
                     possibleBlob.currentBoundingRect.Width > 20 And _
                     possibleBlob.currentBoundingRect.Height > 20 And _
-                    possibleBlob.dblCurrentDiagonalSize > 30.0) Then
+                    possibleBlob.dblCurrentDiagonalSize > 30.0 And _
+                    (CvInvoke.ContourArea(possibleBlob.currentContour) / CDbl(possibleBlob.intCurrentRectArea)) > 0.40) Then
                     currentFrameBlobs.Add(possibleBlob)
                 End If
                 
             Next
+
+            drawAndShowContours(imgThresh.Size(), currentFrameBlobs, "imgCurrentFrameBlobs")
             
             If (blnFirstFrame = True) Then
                 For Each currentFrameBlob As Blob In currentFrameBlobs
@@ -147,20 +161,8 @@ Public Class frmMain
                 matchCurrentFrameBlobsToExistingBlobs(blobs, currentFrameBlobs)
             End If
 
-            Dim imgContours As New Mat(imgFrame1.Size, DepthType.Cv8U, 3)
-
-            contours = New VectorOfVectorOfPoint()
-
-            For Each blob As Blob In blobs
-                If (blob.blnStillBeingTracked = True) Then
-                    contours.Push(blob.currentContour)
-                End If
-            Next
+            drawAndShowContours(imgThresh.size(), blobs, "imgBlobs")
             
-            CvInvoke.DrawContours(imgContours, contours, -1, SCALAR_WHITE, -1)
-
-            CvInvoke.Imshow("imgContours", imgContours)
-
             imgFrame2Copy = imgFrame2.Clone()
 
             drawBlobInfoOnImage(blobs, imgFrame2Copy)
@@ -216,7 +218,7 @@ Public Class frmMain
                 
             Next
 
-            If (dblLeastDistance < currentFrameBlob.dblCurrentDiagonalSize * 1.5) Then
+            If (dblLeastDistance < currentFrameBlob.dblCurrentDiagonalSize * 1.15) Then
                 addBlobToExistingBlobs(currentFrameBlob, existingBlobs, intIndexOfLeastDistance)
             Else
                 addNewBlob(currentFrameBlob, existingBlobs)
@@ -272,6 +274,36 @@ Public Class frmMain
         Return Math.Sqrt((intX ^ 2) + (intY ^ 2))
 
     End Function
+
+    '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+    Sub drawAndShowContours(imageSize As Size, contours As VectorOfVectorOfPoint, strImageName As String)
+
+        Dim image As New Mat(imageSize, DepthType.Cv8U, 3)
+
+        CvInvoke.DrawContours(image, contours, -1, SCALAR_WHITE, -1)
+
+        CvInvoke.Imshow(strImageName, image)
+
+    End Sub
+    
+    '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+    Sub drawAndShowContours(imageSize As Size, blobs As List(Of Blob), strImageName As String)
+
+        Dim image As New Mat(imageSize, DepthType.Cv8U, 3)
+
+        Dim contours As New VectorOfVectorOfPoint()
+
+        For Each blob As Blob In blobs
+            If (blob.blnStillBeingTracked = True) Then
+                contours.Push(blob.currentContour)
+            End If
+        Next
+
+        CvInvoke.DrawContours(image, contours, -1, SCALAR_WHITE, -1)
+
+        CvInvoke.Imshow(strImageName, image)
+
+    End Sub
     
     '''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
     Sub drawBlobInfoOnImage(ByRef blobs As List(Of Blob), ByRef imgFrame2Copy As Mat)
